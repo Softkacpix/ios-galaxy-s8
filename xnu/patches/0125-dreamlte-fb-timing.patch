@@ -1,0 +1,50 @@
+diff --git a/iokit/Kernel/arm/SweetFramebuffer.cpp b/iokit/Kernel/arm/SweetFramebuffer.cpp
+index ec6b9da..d36e890 100644
+--- a/iokit/Kernel/arm/SweetFramebuffer.cpp
++++ b/iokit/Kernel/arm/SweetFramebuffer.cpp
+@@ -381,10 +381,14 @@ void
+ AppleCLCD::present(const uint8_t *rec)
+ {
+ 	uint32_t mask = get32(rec, 0x104);
++	uint64_t t0 = mach_absolute_time();
+ 	IOLockLock(fPresentLock);
+ #if defined(DREAMLTE)
+ 	sweet_fb_wait_frame_done();
+ #endif
++	uint64_t t1 = mach_absolute_time();
++	uint64_t bytes = 0;
++	uint32_t layers = 0;
+ 
+ 
+ 	if (!fConsolePaused) {
+@@ -468,6 +472,8 @@ AppleCLCD::present(const uint8_t *rec)
+ 			src = 0;
+ 		}
+ 		if (src != 0 && bpe == 4) {
++			bytes += (uint64_t)w * 4 * (uint64_t)h;
++			layers++;
+ 			for (int32_t y = 0; y < h; y++) {
+ 				memcpy((void *)(fPixels + (uint64_t)(dy + y) * fRowBytes + (uint64_t)dx * 4),
+ 				    (const void *)(src + s->offset + (uint64_t)(sy + y) * s->bytesPerRow + (uint64_t)sx * 4),
+@@ -476,6 +482,21 @@ AppleCLCD::present(const uint8_t *rec)
+ 		}
+ 		s->release();
+ 	}
++	{
++		static uint64_t n, wait_t, copy_t, bytes_t, layers_t;
++		uint64_t t2 = mach_absolute_time(), ns;
++		absolutetime_to_nanoseconds(t1 - t0, &ns);
++		wait_t += ns;
++		absolutetime_to_nanoseconds(t2 - t1, &ns);
++		copy_t += ns;
++		bytes_t += bytes;
++		layers_t += layers;
++		if (++n == 60) {
++			IOLog("SWEET FB: present x60 avg: lock+wait %llu us, copy %llu us, %llu KB, %llu layer-copies/60\n",
++			   wait_t / 60000, copy_t / 60000, bytes_t / 60 / 1024, layers_t);
++			n = wait_t = copy_t = bytes_t = layers_t = 0;
++		}
++	}
+ 	IOLockUnlock(fPresentLock);
+ }
+ 
